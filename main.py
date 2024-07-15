@@ -1,39 +1,34 @@
-from google.cloud import storage, translate_v2 as translate
+import os
+from google.cloud import translate_v2 as translate
 
-def translate_document(data, context):
-    try:
-        client = storage.Client()
-        translate_client = translate.Client()
-        target_languages = ['es', 'fr', 'de', 'hi']  # Spanish, French, German, Hindi
-        
-        bucket_name = data['bucket']
-        file_name = data['name']
-        
-        input_bucket = client.bucket(bucket_name)
-        output_bucket = client.bucket('translated-documents-translation-project')
-        
-        blob = input_bucket.blob(file_name)
-        content = blob.download_as_string()
-        
-        # Detect the content type to handle appropriately
-        content_type = blob.content_type
-        
-        if content_type.startswith('text'):
-            text = content.decode('utf-8')
-        else:
-            # Handle non-text content appropriately (binary data)
-            text = content
-        
-        # You may need specific handling based on document type here
-        # For example, PDFs may need to be converted to text first
-        
-        for language in target_languages:
-            translated_text = translate_client.translate(text, target_language=language)['translatedText']
-            output_blob = output_bucket.blob(f'{file_name}_{language}.txt')
-            output_blob.upload_from_string(translated_text)
-            
-            print(f'Translated document saved as {file_name}_{language}.txt')
-    
-    except Exception as e:
-        print(f'Error translating document: {str(e)}')
-        raise
+# Set the environment variable for authentication
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'service-account-file.json'
+
+# Function to translate document
+def translate_document(source_language, target_languages, document_path):
+    # Initialize the translation client
+    client = translate.Client()
+
+    # Read the document content
+    with open(document_path, 'r', encoding='utf-8') as file:
+        document_content = file.read()
+
+    # Translate to each target language
+    for target_language in target_languages:
+        print(f"Translating to {target_language}...")
+        translation = client.translate(document_content, target_language=target_language, source_language=source_language)
+
+        # Save translated content to a file
+        output_file = f"translated_{target_language}.txt"
+        with open(output_file, 'w', encoding='utf-8') as file:
+            file.write(translation['translatedText'])
+
+        print(f"Translated content saved to {output_file}")
+
+if __name__ == "__main__":
+    # Example usage
+    source_language = 'en'  # Source language (e.g., English)
+    target_languages = ['fr', 'es', 'de']  # Target languages (e.g., French, Spanish, German)
+    document_path = 'your_document.txt'  # Name of your document in the same directory
+
+    translate_document(source_language, target_languages, document_path)
