@@ -1,34 +1,79 @@
 import os
+import pandas as pd
 from google.cloud import translate_v2 as translate
+from glob import glob
 
 # Set the environment variable for authentication
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'service-account-file.json'
 
-# Function to translate document
-def translate_document(source_language, target_languages, document_path):
-    # Initialize the translation client
-    client = translate.Client()
+# Initialize Google Cloud Translation client
+client = translate.Client()
 
-    # Read the document content
-    with open(document_path, 'r', encoding='utf-8') as file:
-        document_content = file.read()
+# Function to translate text, handling empty values
+def translate_text_safe(text, target_language):
+    if pd.isna(text):  # Check if the value is NaN
+        return ''
+    else:
+        translation = client.translate(text, target_language=target_language)
+        return translation['translatedText']
 
-    # Translate to each target language
+# Function to detect the language of a given text
+def detect_language(text):
+    if pd.isna(text):  # Check if the value is NaN
+        return None
+    else:
+        detection = client.detect_language(text)
+        return detection['language']
+
+# Function to translate Excel file
+def translate_excel(target_languages, excel_path):
+    # Read Excel file
+    excel_data = pd.read_excel(excel_path, sheet_name=None)  # Read all sheets into a dictionary of DataFrames
+
+    # Detect source language from the first non-empty cell in the first sheet
+    first_sheet = list(excel_data.values())[0]
+    source_language = None
+    for cell in first_sheet.stack():
+        source_language = detect_language(cell)
+        if source_language:
+            break
+    print(f"Detected source language: {source_language} for file {excel_path}")
+
+    # Iterate over target languages
     for target_language in target_languages:
-        print(f"Translating to {target_language}...")
-        translation = client.translate(document_content, target_language=target_language, source_language=source_language)
+        # Translate each sheet in the Excel file
+        translated_sheets = {}
+        for sheet_name, df in excel_data.items():
+            print(f"Translating sheet '{sheet_name}' into '{target_language}'...")
 
-        # Save translated content to a file
-        output_file = f"translated_{target_language}.txt"
-        with open(output_file, 'w', encoding='utf-8') as file:
-            file.write(translation['translatedText'])
+            # Translate each column in the DataFrame
+            for column in df.columns:
+                df[column] = df[column].apply(lambda x: translate_text_safe(str(x), target_language))
 
-        print(f"Translated content saved to {output_file}")
+            # Store translated DataFrame
+            translated_sheets[sheet_name] = df
+
+        # Save translated DataFrames to a new Excel file
+        output_excel = f"translated_{os.path.splitext(os.path.basename(excel_path))[0]}_{target_language}.xlsx"
+        with pd.ExcelWriter(output_excel) as writer:
+            for sheet_name, translated_df in translated_sheets.items():
+                translated_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        print(f"Translated content saved to {output_excel}")
 
 if __name__ == "__main__":
     # Example usage
-    source_language = 'en'  # Source language (e.g., English)
     target_languages = ['fr', 'es', 'de']  # Target languages (e.g., French, Spanish, German)
-    document_path = 'your_document.txt'  # Name of your document in the same directory
+    excel_files_path = '*.xlsx'  # Path to your Excel files in the same directory
 
-    translate_document(source_language, target_languages, document_path)
+    # Get a list of all Excel files in the same directory as the script
+    excel_files = glob(excel_files_path)
+
+    # Filter out translated files to avoid reprocessing them
+    input_excel_files = [f for f in excel_files if not f.startswith('translated_')]
+
+    # Translate each Excel file
+    for excel_path in input_excel_files:
+        try:
+            translate_excel(target_languages, excel_path)
+        except Exception as e:
+            print(f"Error processing file {excel_path}: {e}")
