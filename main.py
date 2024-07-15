@@ -1,34 +1,35 @@
 import os
+import pandas as pd
 from google.cloud import translate_v2 as translate
 
 # Set the environment variable for authentication
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'service-account-file.json'
 
-# Function to translate document
-def translate_document(source_language, target_languages, document_path):
+# Function to translate Excel file
+def translate_excel(source_language, target_languages, excel_path):
     # Initialize the translation client
     client = translate.Client()
 
-    # Read the document content
-    with open(document_path, 'r', encoding='utf-8') as file:
-        document_content = file.read()
+    # Read Excel file
+    excel_data = pd.read_excel(excel_path, sheet_name=None)  # Read all sheets into a dictionary of DataFrames
 
-    # Translate to each target language
-    for target_language in target_languages:
-        print(f"Translating to {target_language}...")
-        translation = client.translate(document_content, target_language=target_language, source_language=source_language)
+    # Translate each sheet in the Excel file
+    for sheet_name, df in excel_data.items():
+        print(f"Translating sheet '{sheet_name}'...")
+        
+        # Translate each column in the DataFrame
+        for column in df.columns:
+            df[column] = df[column].apply(lambda x: client.translate(x, target_language=target_languages[0], source_language=source_language)['translatedText'])
 
-        # Save translated content to a file
-        output_file = f"translated_{target_language}.txt"
-        with open(output_file, 'w', encoding='utf-8') as file:
-            file.write(translation['translatedText'])
-
-        print(f"Translated content saved to {output_file}")
+        # Save translated DataFrame to a new Excel file
+        output_excel = f"translated_{sheet_name}.xlsx"
+        df.to_excel(output_excel, index=False)
+        print(f"Translated content saved to {output_excel}")
 
 if __name__ == "__main__":
     # Example usage
     source_language = 'en'  # Source language (e.g., English)
     target_languages = ['fr', 'es', 'de']  # Target languages (e.g., French, Spanish, German)
-    document_path = 'your_document.txt'  # Name of your document in the same directory
+    excel_path = 'your_excel_file.xlsx'  # Path to your Excel file in the same directory
 
-    translate_document(source_language, target_languages, document_path)
+    translate_excel(source_language, target_languages, excel_path)

@@ -14,7 +14,7 @@ I have created a seperate branches for different file translation
 
 
 ## Prerequisites
-1. Install Pyhton and Pip
+1. Install Pyhton and Pip and pandas
 2. Create a GCP Account (Google Cloud Platform)
 
 ## Usuage
